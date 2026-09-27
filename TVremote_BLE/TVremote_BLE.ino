@@ -1,27 +1,29 @@
 /*************************************************************
-  ESP32-C3 Direct Bluetooth (BLE) TV Remote Control
+  ESP32-C3 TV + Cleverio Smart Galaxy Lamp Controller
   Hardware:
     - ESP32-C3
-    - IR Transmitter LED connected to GPIO 1 (BC547B NPN transistor)
-
-  How to use:
-  - This sketch allows direct Bluetooth Low Energy (BLE) control
-    from your smartphone without requiring Wi-Fi or internet.
-  - Install any BLE Terminal app on your phone:
-      * Android: "Serial Bluetooth Terminal" or "nRF Connect"
-      * iOS: "BLE Terminal HM-10" or "LightBlue"
-  - Connect to device: "ESP32C3-TV-Remote"
-  - Send commands:
-      POWER, VOL+, VOL-, MUTE, CH+, CH-, INPUT, 
-      UP, DOWN, LEFT, RIGHT, OK, BACK, MENU
-      BRAND SAMSUNG, BRAND LG, BRAND SONY, BRAND GENERIC
+    - IR Transmitter LED on GPIO 1 (BC547B transistor)
+    - Built-in Wi-Fi SoftAP for Cleverio Lamp
+    - Built-in Bluetooth LE (BLE) for Phone App Control
  *************************************************************/
 
+#include <WiFi.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include "TV_Codes.h"
+#include "Tuya_Lamp.h"
+
+// Wi-Fi SoftAP Settings (Lamp connects here)
+const char* AP_SSID = "GalaxyNet";
+const char* AP_PASS = "superhemligt123";
+
+// Tuya Device Credentials (retrieve via tinytuya)
+const char* TUYA_DEV_ID    = "YOUR_DEV_ID";
+const char* TUYA_LOCAL_KEY = "YOUR_LOCAL_KEY";
+
+TuyaLampController lamp(TUYA_DEV_ID, TUYA_LOCAL_KEY, IPAddress(192, 168, 4, 2));
 
 // Standard Nordic UART Service (NUS) UUIDs
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -51,7 +53,46 @@ void parseAndExecuteBleCommand(String cmdStr) {
 
     Serial.printf("[BLE RX] Command: %s\n", cmdStr.c_str());
 
-    // Check for brand switch commands
+    // --- CLEVERIO GALAXY LAMP COMMANDS ---
+    if (cmdStr == "LAMP_ON" || cmdStr == "LAMP ON") {
+        lamp.setPower(true);
+        sendBleResponse("Lamp: ON");
+        return;
+    } else if (cmdStr == "LAMP_OFF" || cmdStr == "LAMP OFF") {
+        lamp.setPower(false);
+        sendBleResponse("Lamp: OFF");
+        return;
+    } else if (cmdStr == "LASER_ON" || cmdStr == "LASER ON") {
+        lamp.setLaser(true);
+        sendBleResponse("Laser: ON");
+        return;
+    } else if (cmdStr == "LASER_OFF" || cmdStr == "LASER OFF") {
+        lamp.setLaser(false);
+        sendBleResponse("Laser: OFF");
+        return;
+    } else if (cmdStr == "LAMP_RED") {
+        lamp.setColorHSV(0, 1000, 1000);
+        sendBleResponse("Lamp: Red");
+        return;
+    } else if (cmdStr == "LAMP_GREEN") {
+        lamp.setColorHSV(120, 1000, 1000);
+        sendBleResponse("Lamp: Green");
+        return;
+    } else if (cmdStr == "LAMP_BLUE") {
+        lamp.setColorHSV(240, 1000, 1000);
+        sendBleResponse("Lamp: Blue");
+        return;
+    } else if (cmdStr == "LAMP_PURPLE") {
+        lamp.setColorHSV(280, 1000, 1000);
+        sendBleResponse("Lamp: Purple");
+        return;
+    } else if (cmdStr == "LAMP_WHITE") {
+        lamp.setMode("white");
+        sendBleResponse("Lamp: White");
+        return;
+    }
+
+    // --- TV BRAND SELECTION ---
     if (cmdStr.startsWith("BRAND")) {
         if (cmdStr.indexOf("TOSHIBA") >= 0) {
             selectedBrand = BRAND_TOSHIBA;
@@ -68,6 +109,7 @@ void parseAndExecuteBleCommand(String cmdStr) {
         return;
     }
 
+    // --- TV INFRARED COMMANDS ---
     RemoteCommand cmd;
     bool found = false;
 
@@ -105,7 +147,7 @@ void parseAndExecuteBleCommand(String cmdStr) {
         sendTVCommand(selectedBrand, cmd);
         sendBleResponse(String("OK: Sent ") + getCommandName(cmd) + " (" + getBrandName(selectedBrand) + ")");
     } else {
-        sendBleResponse(String("ERR: Unknown command '") + cmdStr + "'. Type HELP");
+        sendBleResponse(String("ERR: Unknown command '") + cmdStr + "'");
     }
 }
 
@@ -133,59 +175,57 @@ class RxCallbacks : public BLECharacteristicCallbacks {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n--- ESP32-C3 BLE TV Remote Starting ---");
+    Serial.println("\n--- ESP32-C3 TV + Cleverio Lamp Controller Starting ---");
 
-    // Initialize IR sender on GPIO 0
+    // 1. Initialize IR sender on GPIO 1
     IrSender.begin(IR_SEND_PIN);
     Serial.printf("[IR] Sender initialized on GPIO %d\n", IR_SEND_PIN);
 
-    // Initialize BLE
+    // 2. Start Wi-Fi SoftAP for Cleverio Lamp
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASS);
+    Serial.printf("[AP] SoftAP '%s' started at IP %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+
+    // 3. Initialize BLE for Phone App
     BLEDevice::init("ESP32C3-TV-Remote");
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
 
-    // Create BLE Service
     BLEService *pService = pServer->createService(SERVICE_UUID);
 
-    // Create TX Characteristic (Notifications to phone)
     pTxCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_TX,
         BLECharacteristic::PROPERTY_NOTIFY
     );
     pTxCharacteristic->addDescriptor(new BLE2902());
 
-    // Create RX Characteristic (Commands from phone)
     BLECharacteristic *pRxCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_RX,
         BLECharacteristic::PROPERTY_WRITE
     );
     pRxCharacteristic->setCallbacks(new RxCallbacks());
 
-    // Start service
     pService->start();
 
-    // Start advertising
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections
+    pAdvertising->setMinPreferred(0x06);
     pAdvertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
 
-    Serial.println("[BLE] BLE advertising started! Ready to pair as 'ESP32C3-TV-Remote'.");
+    Serial.println("[BLE] Advertising started as 'ESP32C3-TV-Remote'.");
 }
 
 void loop() {
-    // Handling reconnection advertising
     if (!deviceConnected && oldDeviceConnected) {
-        delay(500); // give the bluetooth stack the chance to get things ready
-        pServer->startAdvertising(); // restart advertising
-        Serial.println("[BLE] Restarted advertising...");
+        delay(500);
+        pServer->startAdvertising();
         oldDeviceConnected = deviceConnected;
     }
     if (deviceConnected && !oldDeviceConnected) {
         oldDeviceConnected = deviceConnected;
-        sendBleResponse(String("ESP32-C3 TV Remote Ready! Brand: ") + getBrandName(selectedBrand));
+        sendBleResponse(String("TV Remote Ready! (Brand: ") + getBrandName(selectedBrand) + ")");
     }
     delay(20);
 }

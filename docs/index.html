@@ -474,6 +474,39 @@
         </div>
       </div>
     </div>
+
+    <!-- Cleverio Smart Galaxy Lamp Card -->
+    <div class="remote-card" style="margin-top: 14px; gap: 14px;">
+      <div style="font-weight: 700; font-size: 0.95rem; color: #a78bfa; display: flex; align-items: center; justify-content: space-between;">
+        <span>🌌 Cleverio Galaxy Lampa</span>
+      </div>
+
+      <div class="row-power">
+        <button class="btn-secondary" style="background:#4c1d95; color:#fff;" onclick="triggerCmd('LAMP_ON')">
+          💡 Lampa På
+        </button>
+        <button class="btn-secondary" onclick="triggerCmd('LAMP_OFF')">
+          Lampa Av
+        </button>
+      </div>
+
+      <div class="row-power">
+        <button class="btn-secondary" style="background:#065f46; color:#fff;" onclick="triggerCmd('LASER_ON')">
+          ✨ Laser På
+        </button>
+        <button class="btn-secondary" onclick="triggerCmd('LASER_OFF')">
+          Laser Av
+        </button>
+      </div>
+
+      <!-- Color Presets -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+        <button class="num-btn" style="background: #dc2626; color: #fff; font-size: 0.8rem;" onclick="triggerCmd('LAMP_RED')">Röd</button>
+        <button class="num-btn" style="background: #16a34a; color: #fff; font-size: 0.8rem;" onclick="triggerCmd('LAMP_GREEN')">Grön</button>
+        <button class="num-btn" style="background: #2563eb; color: #fff; font-size: 0.8rem;" onclick="triggerCmd('LAMP_BLUE')">Blå</button>
+        <button class="num-btn" style="background: #9333ea; color: #fff; font-size: 0.8rem;" onclick="triggerCmd('LAMP_PURPLE')">Lila</button>
+      </div>
+    </div>
   </div>
 
   <div id="toast" class="toast">Command Sent</div>
