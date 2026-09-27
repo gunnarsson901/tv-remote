@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Smart TV Remote</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#12151c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    :root {
+      --bg: #0c0e14;
+      --card: #161a24;
+      --card-elevated: #1e2433;
+      --btn-bg: #22293a;
+      --btn-active: #313b52;
+      --text: #f0f4fc;
+      --text-muted: #828ca0;
+      --accent: #3a82f7;
+      --accent-glow: rgba(58, 130, 247, 0.4);
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.4);
+      --success: #10b981;
+      --radius-sm: 10px;
+      --radius-md: 18px;
+      --radius-lg: 28px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: env(safe-area-inset-top, 16px) 16px env(safe-area-inset-bottom, 20px);
+      overflow-x: hidden;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 4px;
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-select {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 600;
+      outline: none;
+    }
+
+    /* Status Pill */
+    .status-pill {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--card);
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 10px var(--danger-glow);
+      transition: all 0.3s ease;
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+    }
+
+    .btn-connect {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px var(--accent-glow);
+      transition: transform 0.1s, opacity 0.2s;
+    }
+
+    .btn-connect:active {
+      transform: scale(0.96);
+    }
+
+    /* Remote Body */
+    .remote-card {
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      padding: 22px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+    }
+
+    /* Primary Row */
+    .row-power {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-power {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ef4444, #b91c1c);
+      color: #fff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 6px 16px var(--danger-glow);
+      transition: transform 0.1s;
+    }
+
+    .btn-power:active {
+      transform: scale(0.92);
+      filter: brightness(1.2);
+    }
+
+    .btn-secondary {
+      flex: 1;
+      height: 50px;
+      background: var(--btn-bg);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .btn-secondary:active {
+      background: var(--btn-active);
+      transform: scale(0.96);
+    }
+
+    /* Rockers Section */
+    .rockers-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .rocker {
+      background: var(--card-elevated);
+      border-radius: var(--radius-md);
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .rocker-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      margin: 6px 0;
+      text-transform: uppercase;
+    }
+
+    .rocker-btn {
+      width: 100%;
+      height: 52px;
+      background: var(--btn-bg);
+      border: none;
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .rocker-btn:active {
+      background: var(--accent);
+      transform: scale(0.96);
+    }
+
+    /* D-PAD Navigation */
+    .dpad-container {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      margin: 4px auto;
+      border-radius: 50%;
+      background: var(--card-elevated);
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .dpad-btn {
+      position: absolute;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 1.3rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: color 0.1s;
+    }
+
+    .dpad-btn:active {
+      color: var(--accent);
+    }
+
+    .dpad-up    { top: 8px; left: 50%; transform: translateX(-50%); width: 70px; height: 55px; }
+    .dpad-down  { bottom: 8px; left: 50%; transform: translateX(-50%); width: 70px; height: 55px; }
+    .dpad-left  { left: 8px; top: 50%; transform: translateY(-50%); width: 55px; height: 70px; }
+    .dpad-right { right: 8px; top: 50%; transform: translateY(-50%); width: 55px; height: 70px; }
+
+    .dpad-center {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 82px;
+      height: 82px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #2b3346, #1c2230);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      border: 2px solid rgba(255,255,255,0.08);
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.1s;
+    }
+
+    .dpad-center:active {
+      transform: translate(-50%, -50%) scale(0.92);
+      border-color: var(--accent);
+    }
+
+    /* Bottom Function Keys */
+    .row-functions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    /* Keypad Drawer */
+    .keypad-toggle-btn {
+      width: 100%;
+      background: transparent;
+      border: 1px dashed rgba(255,255,255,0.12);
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      padding: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .keypad-grid {
+      display: none;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .keypad-grid.open {
+      display: grid;
+    }
+
+    .num-btn {
+      height: 44px;
+      background: var(--card-elevated);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .num-btn:active {
+      background: var(--accent);
+    }
+
+    /* Feedback Banner */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(50px);
+      background: #1f293d;
+      color: #93c5fd;
+      padding: 10px 20px;
+      border-radius: 30px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1px solid rgba(147, 197, 253, 0.2);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <div class="brand-title">
+        <span>📺 Smart Remote</span>
+      </div>
+      <select id="brandSelect" class="brand-select" onchange="onBrandChange()">
+        <option value="TOSHIBA" selected>Toshiba</option>
+        <option value="SAMSUNG">Samsung</option>
+        <option value="LG">LG</option>
+        <option value="SONY">Sony</option>
+        <option value="GENERIC">Generic</option>
+      </select>
+    </div>
+
+    <!-- Status & Connect Pill -->
+    <div class="status-pill">
+      <div class="status-indicator">
+        <span id="statusDot" class="status-dot"></span>
+        <span id="statusText">Disconnected</span>
+      </div>
+      <button id="connectBtn" class="btn-connect" onclick="handleConnectClick()">Connect</button>
+    </div>
+
+    <!-- In-App Install Button -->
+    <button id="pwaInstallBtn" style="display:none; width:100%; background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:12px; border-radius:var(--radius-md); font-weight:700; font-size:0.9rem; cursor:pointer; box-shadow:0 4px 12px rgba(16,185,129,0.3);" onclick="promptInstall()">
+      📥 Installera på hemskärmen
+    </button>
+
+    <!-- Remote Card -->
+    <div class="remote-card">
+      <!-- Power & Quick -->
+      <div class="row-power">
+        <button class="btn-power" onclick="triggerCmd('POWER')" title="Power">
+          ⏻
+        </button>
+        <button class="btn-secondary" onclick="triggerCmd('INPUT')">
+          <span>SOURCE</span>
+        </button>
+        <button class="btn-secondary" onclick="triggerCmd('MUTE')">
+          <span>🔇 MUTE</span>
+        </button>
+      </div>
+
+      <!-- Volume & Channel Rockers -->
+      <div class="rockers-section">
+        <div class="rocker">
+          <button class="rocker-btn" onclick="triggerCmd('VOL+')">+</button>
+          <span class="rocker-label">VOL</span>
+          <button class="rocker-btn" onclick="triggerCmd('VOL-')">−</button>
+        </div>
+        <div class="rocker">
+          <button class="rocker-btn" onclick="triggerCmd('CH+')">▲</button>
+          <span class="rocker-label">CH</span>
+          <button class="rocker-btn" onclick="triggerCmd('CH-')">▼</button>
+        </div>
+      </div>
+
+      <!-- D-Pad Navigation -->
+      <div class="dpad-container">
+        <button class="dpad-btn dpad-up" onclick="triggerCmd('UP')">▲</button>
+        <button class="dpad-btn dpad-left" onclick="triggerCmd('LEFT')">◀</button>
+        <button class="dpad-center" onclick="triggerCmd('OK')">OK</button>
+        <button class="dpad-btn dpad-right" onclick="triggerCmd('RIGHT')">▶</button>
+        <button class="dpad-btn dpad-down" onclick="triggerCmd('DOWN')">▼</button>
+      </div>
+
+      <!-- Bottom Nav Keys -->
+      <div class="row-functions">
+        <button class="btn-secondary" onclick="triggerCmd('BACK')">↩ Back</button>
+        <button class="btn-secondary" onclick="triggerCmd('MENU')">☰ Menu</button>
+        <button class="btn-secondary" onclick="triggerCmd('EXIT')">✕ Exit</button>
+      </div>
+
+      <!-- Optional Keypad Drawer -->
+      <div>
+        <button class="keypad-toggle-btn" onclick="toggleKeypad()">🔢 123 Keypad</button>
+        <div id="keypadGrid" class="keypad-grid">
+          <button class="num-btn" onclick="triggerCmd('1')">1</button>
+          <button class="num-btn" onclick="triggerCmd('2')">2</button>
+          <button class="num-btn" onclick="triggerCmd('3')">3</button>
+          <button class="num-btn" onclick="triggerCmd('4')">4</button>
+          <button class="num-btn" onclick="triggerCmd('5')">5</button>
+          <button class="num-btn" onclick="triggerCmd('6')">6</button>
+          <button class="num-btn" onclick="triggerCmd('7')">7</button>
+          <button class="num-btn" onclick="triggerCmd('8')">8</button>
+          <button class="num-btn" onclick="triggerCmd('9')">9</button>
+          <button class="num-btn" onclick="triggerCmd('0')">0</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Command Sent</div>
+
+  <script>
+    const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const RX_UUID      = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+    const TX_UUID      = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+    let bleDevice = null;
+    let rxChar = null;
+    let toastTimeout = null;
+
+    // Register Service Worker for offline PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const installBtn = document.getElementById('pwaInstallBtn');
+      if (installBtn) installBtn.style.display = 'block';
+    });
+
+    async function promptInstall() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          document.getElementById('pwaInstallBtn').style.display = 'none';
+        }
+        deferredPrompt = null;
+      }
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => t.classList.remove('show'), 1500);
+    }
+
+    function haptic() {
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
+
+    let nativeDeviceId = null;
+
+    function isNative() {
+      return typeof window.Capacitor !== 'undefined' && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform();
+    }
+
+    async function handleConnectClick() {
+      haptic();
+
+      // If already connected, disconnect
+      if (isNative() && nativeDeviceId) {
+        try {
+          await Capacitor.Plugins.BluetoothLe.disconnect({ deviceId: nativeDeviceId });
+        } catch (e) {}
+        nativeDeviceId = null;
+        updateStatus("Disconnected", false);
+        return;
+      }
+      if (!isNative() && bleDevice && bleDevice.gatt && bleDevice.gatt.connected) {
+        bleDevice.gatt.disconnect();
+        return;
+      }
+
+      // --- NATIVE CAPACITOR BLE (Android / iOS Debug App) ---
+      if (isNative()) {
+        const Ble = Capacitor.Plugins.BluetoothLe;
+        try {
+          updateStatus("Scanning...", false);
+          await Ble.initialize();
+          const device = await Ble.requestDevice({
+            services: [SERVICE_UUID],
+            optionalServices: [SERVICE_UUID]
+          });
+
+          nativeDeviceId = device.deviceId;
+          updateStatus("Connecting...", false);
+          await Ble.connect({ deviceId: nativeDeviceId });
+
+          try {
+            await Ble.startNotifications({
+              deviceId: nativeDeviceId,
+              service: SERVICE_UUID,
+              characteristic: TX_UUID
+            }, (res) => {
+              if (res && res.value) {
+                const text = new TextDecoder().decode(res.value).trim();
+                showToast(text);
+              }
+            });
+          } catch (notifErr) {}
+
+          updateStatus("Connected", true);
+          showToast("Connected: " + (device.name || "Remote"));
+          setTimeout(onBrandChange, 400);
+          return;
+        } catch (err) {
+          console.error(err);
+          updateStatus("Disconnected", false);
+          showToast("Error: " + (err.message || err));
+          return;
+        }
+      }
+
+      // --- WEB BLUETOOTH FALLBACK ---
+      if (!navigator.bluetooth) {
+        alert("Bluetooth is not supported in this browser context.");
+        return;
+      }
+
+      try {
+        updateStatus("Scanning...", false);
+        try {
+          bleDevice = await navigator.bluetooth.requestDevice({
+            filters: [{ name: 'ESP32C3-TV-Remote' }],
+            optionalServices: [SERVICE_UUID]
+          });
+        } catch (e) {
+          bleDevice = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [SERVICE_UUID]
+          });
+        }
+
+        bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+        updateStatus("Connecting...", false);
+
+        const server = await bleDevice.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        rxChar = await service.getCharacteristic(RX_UUID);
+        const txChar = await service.getCharacteristic(TX_UUID);
+
+        await txChar.startNotifications();
+        txChar.addEventListener('characteristicvaluechanged', (e) => {
+          const val = new TextDecoder().decode(e.target.value).trim();
+          showToast(val);
+        });
+
+        updateStatus("Connected", true);
+        showToast("Connected to ESP32C3-TV-Remote");
+        setTimeout(onBrandChange, 400);
+
+      } catch (err) {
+        console.error(err);
+        updateStatus("Disconnected", false);
+        showToast("Connection cancelled");
+      }
+    }
+
+    function onDisconnected() {
+      updateStatus("Disconnected", false);
+      rxChar = null;
+      nativeDeviceId = null;
+      showToast("Remote Disconnected");
+    }
+
+    function updateStatus(text, isConnected) {
+      const dot = document.getElementById('statusDot');
+      const label = document.getElementById('statusText');
+      const btn = document.getElementById('connectBtn');
+
+      label.innerText = text;
+      if (isConnected) {
+        dot.classList.add('connected');
+        btn.innerText = "Disconnect";
+        btn.style.background = "#4b5563";
+      } else {
+        dot.classList.remove('connected');
+        btn.innerText = "Connect";
+        btn.style.background = "var(--accent)";
+      }
+    }
+
+    async function triggerCmd(cmd) {
+      haptic();
+
+      // Native Write
+      if (isNative() && nativeDeviceId) {
+        try {
+          const raw = new TextEncoder().encode(cmd + "\n");
+          const dataView = new DataView(raw.buffer);
+          await Capacitor.Plugins.BluetoothLe.write({
+            deviceId: nativeDeviceId,
+            service: SERVICE_UUID,
+            characteristic: RX_UUID,
+            value: dataView
+          });
+          showToast("Sent: " + cmd);
+        } catch (e) {
+          showToast("Error sending command");
+        }
+        return;
+      }
+
+      // Web Bluetooth Write
+      if (!rxChar) {
+        showToast("Please tap Connect first!");
+        return;
+      }
+
+      try {
+        await rxChar.writeValue(new TextEncoder().encode(cmd + "\n"));
+        showToast("Sent: " + cmd);
+      } catch (e) {
+        showToast("Error sending command");
+      }
+    }
+
+    function onBrandChange() {
+      const brand = document.getElementById('brandSelect').value;
+      const cmd = "BRAND " + brand + "\n";
+      if (isNative() && nativeDeviceId) {
+        const raw = new TextEncoder().encode(cmd);
+        Capacitor.Plugins.BluetoothLe.write({
+          deviceId: nativeDeviceId,
+          service: SERVICE_UUID,
+          characteristic: RX_UUID,
+          value: new DataView(raw.buffer)
+        }).catch(() => {});
+        showToast("Brand: " + brand);
+      } else if (rxChar) {
+        rxChar.writeValue(new TextEncoder().encode(cmd)).catch(() => {});
+        showToast("Brand: " + brand);
+      }
+    }
+
+    function toggleKeypad() {
+      haptic();
+      const grid = document.getElementById('keypadGrid');
+      grid.classList.toggle('open');
+    }
+  </script>
+</body>
+</html>
