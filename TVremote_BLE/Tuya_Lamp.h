@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <mbedtls/aes.h>
 
 class TuyaLampController {
@@ -10,6 +11,8 @@ private:
     String devId;
     String localKey;
     IPAddress lampIp;
+    bool ipDiscovered;
+    WiFiUDP udp;
 
     uint32_t calculateCRC32(const uint8_t *data, size_t length) {
         uint32_t crc = 0xFFFFFFFF;
@@ -24,16 +27,46 @@ private:
     }
 
 public:
-    TuyaLampController(const char* id, const char* key, IPAddress ip = IPAddress(192, 168, 4, 2))
-        : devId(id), localKey(key), lampIp(ip) {}
+    TuyaLampController(const char* id, const char* key, IPAddress defaultIp = IPAddress(0, 0, 0, 0))
+        : devId(id), localKey(key), lampIp(defaultIp), ipDiscovered(false) {}
+
+    void beginUdp() {
+        udp.begin(6666);
+    }
 
     void setLampIp(IPAddress ip) {
         lampIp = ip;
+        ipDiscovered = true;
     }
 
-    void setCredentials(const char* id, const char* key) {
-        devId = id;
-        localKey = key;
+    IPAddress getLampIp() {
+        return lampIp;
+    }
+
+    bool isDiscovered() {
+        return ipDiscovered;
+    }
+
+    void update() {
+        if (WiFi.status() != WL_CONNECTED) return;
+        
+        int packetSize = udp.parsePacket();
+        if (packetSize > 0) {
+            char buf[512];
+            int len = udp.read(buf, sizeof(buf) - 1);
+            if (len > 0) {
+                buf[len] = '\0';
+                String msg = String(buf);
+                if (msg.indexOf(devId) >= 0) {
+                    IPAddress newIp = udp.remoteIP();
+                    if (!ipDiscovered || lampIp != newIp) {
+                        lampIp = newIp;
+                        ipDiscovered = true;
+                        Serial.printf("[Tuya] Discovered Cleverio lamp at IP: %s\n", lampIp.toString().c_str());
+                    }
+                }
+            }
+        }
     }
 
     bool sendCommand(const String &dpsJson) {
@@ -42,12 +75,45 @@ public:
             return false;
         }
 
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("[Tuya] Error: WiFi is not connected!");
+            return false;
+        }
+
+        // If IP is not discovered yet, check UDP packet or probe subnet
+        if (!ipDiscovered || lampIp == IPAddress(0, 0, 0, 0)) {
+            update();
+            if (!ipDiscovered || lampIp == IPAddress(0, 0, 0, 0)) {
+                Serial.println("[Tuya] Lamp IP unknown. Probing local subnet for port 6668...");
+                IPAddress myIp = WiFi.localIP();
+                for (int i = 2; i <= 20; i++) {
+                    IPAddress testIp(myIp[0], myIp[1], myIp[2], i);
+                    if (testIp == myIp) continue;
+                    WiFiClient testClient;
+                    testClient.setTimeout(50);
+                    if (testClient.connect(testIp, 6668)) {
+                        testClient.stop();
+                        lampIp = testIp;
+                        ipDiscovered = true;
+                        Serial.printf("[Tuya] Found open Tuya port 6668 at %s!\n", lampIp.toString().c_str());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!ipDiscovered || lampIp == IPAddress(0, 0, 0, 0)) {
+            Serial.println("[Tuya] Cannot send: Lamp IP unknown on current network!");
+            return false;
+        }
+
         Serial.printf("[Tuya] Sending to %s: %s\n", lampIp.toString().c_str(), dpsJson.c_str());
 
         WiFiClient client;
         client.setTimeout(1000);
         if (!client.connect(lampIp, 6668)) {
-            Serial.println("[Tuya] Connection to lamp failed (Port 6668)!");
+            Serial.printf("[Tuya] Connection to lamp at %s failed!\n", lampIp.toString().c_str());
+            ipDiscovered = false; // Reset to rediscover IP
             return false;
         }
 

@@ -3,7 +3,7 @@
   Hardware:
     - ESP32-C3
     - IR Transmitter LED on GPIO 1 (BC547B transistor)
-    - Built-in Wi-Fi SoftAP for Cleverio Lamp
+    - Wi-Fi Station (Multi-AP fallback) for Cleverio Lamp
     - Built-in Bluetooth LE (BLE) for Phone App Control
  *************************************************************/
 
@@ -15,15 +15,25 @@
 #include "TV_Codes.h"
 #include "Tuya_Lamp.h"
 
-// Wi-Fi SoftAP Settings (Lamp connects here)
-const char* AP_SSID = "GalaxyNet";
-const char* AP_PASS = "superhemligt123";
+// Wi-Fi Multi-AP Fallback list
+struct KnownAP {
+    const char* ssid;
+    const char* pass;
+};
+
+const KnownAP knownAPs[] = {
+    {"Maryams iphone", "heiiiii!"},
+    {"supdude", "dudesup?"},
+    {"GalaxyNet", "superhemligt123"}
+};
+const int numKnownAPs = sizeof(knownAPs) / sizeof(knownAPs[0]);
+int currentApIndex = 0;
 
 // Tuya Device Credentials (Cleverio Smart Galaxy Lamp)
 const char* TUYA_DEV_ID    = "bf8fb27deb7cd94966pntq";
 const char* TUYA_LOCAL_KEY = "<q:~=&dB[i.bo=^F";
 
-TuyaLampController lamp(TUYA_DEV_ID, TUYA_LOCAL_KEY, IPAddress(192, 168, 4, 2));
+TuyaLampController lamp(TUYA_DEV_ID, TUYA_LOCAL_KEY);
 
 // Standard Nordic UART Service (NUS) UUIDs
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -55,40 +65,76 @@ void parseAndExecuteBleCommand(String cmdStr) {
 
     // --- CLEVERIO GALAXY LAMP COMMANDS ---
     if (cmdStr == "LAMP_ON" || cmdStr == "LAMP ON") {
-        lamp.setPower(true);
-        sendBleResponse("Lamp: ON");
+        if (WiFi.status() != WL_CONNECTED) {
+            sendBleResponse("Error: WiFi Disconnected (Turn on Hotspot)");
+        } else {
+            bool ok = lamp.setPower(true);
+            sendBleResponse(ok ? "Lamp: ON" : "Lamp: Failed");
+        }
         return;
     } else if (cmdStr == "LAMP_OFF" || cmdStr == "LAMP OFF") {
-        lamp.setPower(false);
-        sendBleResponse("Lamp: OFF");
+        if (WiFi.status() != WL_CONNECTED) {
+            sendBleResponse("Error: WiFi Disconnected");
+        } else {
+            bool ok = lamp.setPower(false);
+            sendBleResponse(ok ? "Lamp: OFF" : "Lamp: Failed");
+        }
         return;
     } else if (cmdStr == "LASER_ON" || cmdStr == "LASER ON") {
-        lamp.setLaser(true);
-        sendBleResponse("Laser: ON");
+        if (WiFi.status() != WL_CONNECTED) {
+            sendBleResponse("Error: WiFi Disconnected");
+        } else {
+            bool ok = lamp.setLaser(true);
+            sendBleResponse(ok ? "Laser: ON" : "Laser: Failed");
+        }
         return;
     } else if (cmdStr == "LASER_OFF" || cmdStr == "LASER OFF") {
-        lamp.setLaser(false);
-        sendBleResponse("Laser: OFF");
+        if (WiFi.status() != WL_CONNECTED) {
+            sendBleResponse("Error: WiFi Disconnected");
+        } else {
+            bool ok = lamp.setLaser(false);
+            sendBleResponse(ok ? "Laser: OFF" : "Laser: Failed");
+        }
         return;
     } else if (cmdStr == "LAMP_RED") {
-        lamp.setColorHSV(0, 1000, 1000);
-        sendBleResponse("Lamp: Red");
+        if (WiFi.status() == WL_CONNECTED) {
+            lamp.setColorHSV(0, 1000, 1000);
+            sendBleResponse("Lamp: Red");
+        } else {
+            sendBleResponse("Error: WiFi Disconnected");
+        }
         return;
     } else if (cmdStr == "LAMP_GREEN") {
-        lamp.setColorHSV(120, 1000, 1000);
-        sendBleResponse("Lamp: Green");
+        if (WiFi.status() == WL_CONNECTED) {
+            lamp.setColorHSV(120, 1000, 1000);
+            sendBleResponse("Lamp: Green");
+        } else {
+            sendBleResponse("Error: WiFi Disconnected");
+        }
         return;
     } else if (cmdStr == "LAMP_BLUE") {
-        lamp.setColorHSV(240, 1000, 1000);
-        sendBleResponse("Lamp: Blue");
+        if (WiFi.status() == WL_CONNECTED) {
+            lamp.setColorHSV(240, 1000, 1000);
+            sendBleResponse("Lamp: Blue");
+        } else {
+            sendBleResponse("Error: WiFi Disconnected");
+        }
         return;
     } else if (cmdStr == "LAMP_PURPLE") {
-        lamp.setColorHSV(280, 1000, 1000);
-        sendBleResponse("Lamp: Purple");
+        if (WiFi.status() == WL_CONNECTED) {
+            lamp.setColorHSV(280, 1000, 1000);
+            sendBleResponse("Lamp: Purple");
+        } else {
+            sendBleResponse("Error: WiFi Disconnected");
+        }
         return;
     } else if (cmdStr == "LAMP_WHITE") {
-        lamp.setMode("white");
-        sendBleResponse("Lamp: White");
+        if (WiFi.status() == WL_CONNECTED) {
+            lamp.setMode("white");
+            sendBleResponse("Lamp: White");
+        } else {
+            sendBleResponse("Error: WiFi Disconnected");
+        }
         return;
     }
 
@@ -109,7 +155,7 @@ void parseAndExecuteBleCommand(String cmdStr) {
         return;
     }
 
-    // --- TV INFRARED COMMANDS ---
+    // --- TV INFRARED COMMANDS (Always 100% independent of Wi-Fi!) ---
     RemoteCommand cmd;
     bool found = false;
 
@@ -127,6 +173,10 @@ void parseAndExecuteBleCommand(String cmdStr) {
         cmd = CMD_CH_DOWN; found = true;
     } else if (cmdStr == "INPUT" || cmdStr == "SOURCE") {
         cmd = CMD_INPUT; found = true;
+    } else if (cmdStr == "MENU" || cmdStr == "HOME") {
+        cmd = CMD_MENU; found = true;
+    } else if (cmdStr == "BACK" || cmdStr == "RETURN") {
+        cmd = CMD_BACK; found = true;
     } else if (cmdStr == "UP") {
         cmd = CMD_UP; found = true;
     } else if (cmdStr == "DOWN") {
@@ -137,35 +187,32 @@ void parseAndExecuteBleCommand(String cmdStr) {
         cmd = CMD_RIGHT; found = true;
     } else if (cmdStr == "OK" || cmdStr == "ENTER") {
         cmd = CMD_OK; found = true;
-    } else if (cmdStr == "BACK" || cmdStr == "RETURN") {
-        cmd = CMD_BACK; found = true;
-    } else if (cmdStr == "MENU" || cmdStr == "HOME") {
-        cmd = CMD_MENU; found = true;
     }
 
     if (found) {
+        Serial.printf("[IR] Sending TV command '%s' via IR pin %d...\n", cmdStr.c_str(), IR_SEND_PIN);
         sendTVCommand(selectedBrand, cmd);
-        sendBleResponse(String("OK: Sent ") + getCommandName(cmd) + " (" + getBrandName(selectedBrand) + ")");
+        sendBleResponse(String("Sent: ") + cmdStr);
     } else {
-        sendBleResponse(String("ERR: Unknown command '") + cmdStr + "'");
+        Serial.printf("[BLE] Unknown command: %s\n", cmdStr.c_str());
+        sendBleResponse(String("Unknown: ") + cmdStr);
     }
 }
 
 class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         deviceConnected = true;
-        Serial.println("[BLE] Device connected!");
+        Serial.println("[BLE] Phone connected!");
     }
-
     void onDisconnect(BLEServer* pServer) {
         deviceConnected = false;
-        Serial.println("[BLE] Device disconnected!");
+        Serial.println("[BLE] Phone disconnected!");
     }
 };
 
 class RxCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
-        String rxValue = pCharacteristic->getValue();
+        String rxValue = pCharacteristic->getValue().c_str();
         if (rxValue.length() > 0) {
             parseAndExecuteBleCommand(rxValue);
         }
@@ -177,23 +224,11 @@ void setup() {
     delay(1000);
     Serial.println("\n--- ESP32-C3 TV + Cleverio Lamp Controller Starting ---");
 
-    // 1. Initialize IR sender on GPIO 1
+    // 1. Initialize IR sender on GPIO 1 (Instant TV control)
     IrSender.begin(IR_SEND_PIN);
     Serial.printf("[IR] Sender initialized on GPIO %d\n", IR_SEND_PIN);
 
-    // 2. Start Wi-Fi SoftAP for Cleverio Lamp
-    WiFi.mode(WIFI_AP);
-    WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
-        if (event == ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED) {
-            IPAddress ip = IPAddress(info.wifi_ap_staipassigned.ip.addr);
-            Serial.printf("[AP] Cleverio Lamp connected! Assigned IP: %s\n", ip.toString().c_str());
-            lamp.setLampIp(ip);
-        }
-    });
-    WiFi.softAP(AP_SSID, AP_PASS);
-    Serial.printf("[AP] SoftAP '%s' started at IP %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
-
-    // 3. Initialize BLE for Phone App
+    // 2. Initialize Bluetooth LE for Phone App (Instant connection)
     BLEDevice::init("ESP32C3-TV-Remote");
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
@@ -217,14 +252,30 @@ void setup() {
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06);
-    pAdvertising->setMinPreferred(0x12);
+    pAdvertising->setMinInterval(160); // 100ms
+    pAdvertising->setMaxInterval(320); // 200ms
     BLEDevice::startAdvertising();
 
     Serial.println("[BLE] Advertising started as 'ESP32C3-TV-Remote'.");
+
+    // 3. Initialize Wi-Fi in Station mode (Multi-AP background fallback)
+    WiFi.mode(WIFI_STA);
+    WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+        if (event == ARDUINO_EVENT_WIFI_STA_CONNECTED) {
+            Serial.printf("[WiFi] Connected to AP '%s'!\n", WiFi.SSID().c_str());
+        } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+            Serial.printf("[WiFi] Got IP: %s\n", WiFi.localIP().toString().c_str());
+        } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+            Serial.println("[WiFi] Disconnected from AP.");
+        }
+    });
+
+    lamp.beginUdp();
+    Serial.println("[WiFi] Multi-AP client mode initialized. Ready!");
 }
 
 void loop() {
+    // BLE Re-advertising handling
     if (!deviceConnected && oldDeviceConnected) {
         delay(500);
         pServer->startAdvertising();
@@ -234,5 +285,48 @@ void loop() {
         oldDeviceConnected = deviceConnected;
         sendBleResponse(String("TV Remote Ready! (Brand: ") + getBrandName(selectedBrand) + ")");
     }
+
+    // Tuya background UDP discovery check
+    lamp.update();
+
+    // Background Non-blocking Wi-Fi Reconnect (Every 7 seconds, never blocks BLE or IR)
+    static unsigned long lastWifiAttempt = 0;
+    if (WiFi.status() != WL_CONNECTED) {
+        if (millis() - lastWifiAttempt > 7000) {
+            lastWifiAttempt = millis();
+            const KnownAP &ap = knownAPs[currentApIndex];
+            Serial.printf("[WiFi] Trying connection to '%s'...\n", ap.ssid);
+            WiFi.disconnect();
+            WiFi.begin(ap.ssid, ap.pass);
+            currentApIndex = (currentApIndex + 1) % numKnownAPs;
+        }
+    }
+
+    // Serial CLI commands for testing directly from PC
+    static String serialCmd = "";
+    while (Serial.available()) {
+        char c = (char)Serial.read();
+        if (c == '\n' || c == '\r') {
+            if (serialCmd.length() > 0) {
+                Serial.printf("[CLI] Executing: %s\n", serialCmd.c_str());
+                parseAndExecuteBleCommand(serialCmd);
+                serialCmd = "";
+            }
+        } else {
+            serialCmd += c;
+        }
+    }
+
+    // Periodic status heartbeat
+    static unsigned long lastLog = 0;
+    if (millis() - lastLog > 5000) {
+        lastLog = millis();
+        Serial.printf("[STATUS] WiFi: %s (%s) | BLE: %s | Lamp IP: %s\n",
+            WiFi.status() == WL_CONNECTED ? WiFi.SSID().c_str() : "Disconnected",
+            WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "No IP",
+            deviceConnected ? "Connected" : "Advertising",
+            lamp.isDiscovered() ? lamp.getLampIp().toString().c_str() : "Searching");
+    }
+
     delay(20);
 }
