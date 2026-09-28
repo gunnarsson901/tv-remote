@@ -1,90 +1,32 @@
 /*************************************************************
-  ESP32-C3 TV + Cleverio Smart Galaxy Lamp Wi-Fi Controller
+  ESP32-C3 Toshiba TV Wi-Fi Controller
   Hardware:
     - ESP32-C3
     - IR Transmitter LED on GPIO 1 (BC547B transistor)
     - Wi-Fi Station connected to TP-LINK_9222
     - Local Web Server & REST API on port 80 (http://tvremote.local)
-    - Tuya LAN 3.3 protocol for Cleverio Lamp
  *************************************************************/
 
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
-#include <time.h>
 #include "TV_Codes.h"
-#include "Tuya_Lamp.h"
 
-// Wi-Fi Credentials for dedicated router
+// Wi-Fi Credentials for router
 const char* WIFI_SSID = "TP-LINK_9222";
 const char* WIFI_PASS = "66442523";
 
-// Secondary fallback networks
-struct KnownAP {
-    const char* ssid;
-    const char* pass;
-};
-const KnownAP fallbackAPs[] = {
-    {"TP-LINK_9222", "66442523"},
-    {"Maryams iphone", "heiiiii!"},
-    {"supdude", "dudesup?"}
-};
-const int numFallbackAPs = sizeof(fallbackAPs) / sizeof(fallbackAPs[0]);
-int currentApIndex = 0;
-
-// Tuya Device Credentials (Cleverio Smart Galaxy Lamp)
-const char* TUYA_DEV_ID    = "bf8fb27deb7cd94966pntq";
-const char* TUYA_LOCAL_KEY = "<q:~=&dB[i.bo=^F";
-
-TuyaLampController lamp(TUYA_DEV_ID, TUYA_LOCAL_KEY);
 WebServer server(80);
-
 TVBrand selectedBrand = BRAND_TOSHIBA;
 
-void executeCommand(String cmdStr) {
+void executeTvCommand(String cmdStr) {
     cmdStr.trim();
     cmdStr.toUpperCase();
 
     if (cmdStr.length() == 0) return;
 
-    Serial.printf("[CMD] Executing: %s\n", cmdStr.c_str());
+    Serial.printf("[TV] Command received: %s\n", cmdStr.c_str());
 
-    // --- CLEVERIO GALAXY LAMP COMMANDS ---
-    if (cmdStr == "LAMP_ON" || cmdStr == "LAMP ON") {
-        if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("[Tuya] Error: WiFi Disconnected");
-        } else {
-            lamp.setPower(true);
-        }
-        return;
-    } else if (cmdStr == "LAMP_OFF" || cmdStr == "LAMP OFF") {
-        if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("[Tuya] Error: WiFi Disconnected");
-        } else {
-            lamp.setPower(false);
-        }
-        return;
-    } else if (cmdStr == "LASER_ON" || cmdStr == "LASER ON") {
-        if (WiFi.status() == WL_CONNECTED) lamp.setLaser(true);
-        return;
-    } else if (cmdStr == "LASER_OFF" || cmdStr == "LASER OFF") {
-        if (WiFi.status() == WL_CONNECTED) lamp.setLaser(false);
-        return;
-    } else if (cmdStr == "LAMP_RED") {
-        if (WiFi.status() == WL_CONNECTED) lamp.setColorHSV(0, 1000, 1000);
-        return;
-    } else if (cmdStr == "LAMP_GREEN") {
-        if (WiFi.status() == WL_CONNECTED) lamp.setColorHSV(120, 1000, 1000);
-        return;
-    } else if (cmdStr == "LAMP_BLUE") {
-        if (WiFi.status() == WL_CONNECTED) lamp.setColorHSV(240, 1000, 1000);
-        return;
-    } else if (cmdStr == "LAMP_PURPLE") {
-        if (WiFi.status() == WL_CONNECTED) lamp.setColorHSV(280, 1000, 1000);
-        return;
-    }
-
-    // --- TV INFRARED COMMANDS (Toshiba NEC Protocol on GPIO 1) ---
     RemoteCommand cmd;
     bool found = false;
 
@@ -106,6 +48,8 @@ void executeCommand(String cmdStr) {
         cmd = CMD_MENU; found = true;
     } else if (cmdStr == "BACK" || cmdStr == "RETURN") {
         cmd = CMD_BACK; found = true;
+    } else if (cmdStr == "EXIT") {
+        cmd = CMD_BACK; found = true;
     } else if (cmdStr == "UP") {
         cmd = CMD_UP; found = true;
     } else if (cmdStr == "DOWN") {
@@ -116,17 +60,37 @@ void executeCommand(String cmdStr) {
         cmd = CMD_RIGHT; found = true;
     } else if (cmdStr == "OK" || cmdStr == "ENTER") {
         cmd = CMD_OK; found = true;
+    } else if (cmdStr == "1") {
+        cmd = CMD_1; found = true;
+    } else if (cmdStr == "2") {
+        cmd = CMD_2; found = true;
+    } else if (cmdStr == "3") {
+        cmd = CMD_3; found = true;
+    } else if (cmdStr == "4") {
+        cmd = CMD_4; found = true;
+    } else if (cmdStr == "5") {
+        cmd = CMD_5; found = true;
+    } else if (cmdStr == "6") {
+        cmd = CMD_6; found = true;
+    } else if (cmdStr == "7") {
+        cmd = CMD_7; found = true;
+    } else if (cmdStr == "8") {
+        cmd = CMD_8; found = true;
+    } else if (cmdStr == "9") {
+        cmd = CMD_9; found = true;
+    } else if (cmdStr == "0") {
+        cmd = CMD_0; found = true;
     }
 
     if (found) {
-        Serial.printf("[IR] Sending '%s' via GPIO %d...\n", cmdStr.c_str(), IR_SEND_PIN);
+        Serial.printf("[IR] Sending '%s' to Toshiba TV (GPIO %d)...\n", cmdStr.c_str(), IR_SEND_PIN);
         sendTVCommand(selectedBrand, cmd);
     } else {
-        Serial.printf("[CMD] Unknown command: %s\n", cmdStr.c_str());
+        Serial.printf("[TV] Unknown command: %s\n", cmdStr.c_str());
     }
 }
 
-// Mobile-friendly HTML Web Remote Page
+// Mobile-friendly TV Remote Web Interface
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="sv">
@@ -135,22 +99,22 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>TV & Lamp Fjärrkontroll</title>
+  <title>Toshiba TV Fjärr</title>
   <style>
     :root {
       --bg: #0b0f19;
       --card: #151d2f;
+      --card-inner: #101624;
       --btn-bg: #1f293d;
-      --btn-active: #374151;
+      --btn-active: #4f46e5;
       --accent: #6366f1;
-      --accent-glow: rgba(99, 102, 241, 0.4);
       --danger: #ef4444;
-      --success: #10b981;
+      --danger-dark: #dc2626;
       --text: #f3f4f6;
       --text-muted: #9ca3af;
-      --radius-sm: 8px;
+      --radius-sm: 10px;
       --radius-md: 14px;
-      --radius-lg: 20px;
+      --radius-lg: 24px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     body {
@@ -160,77 +124,147 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       min-height: 100vh;
       display: flex;
       justify-content: center;
-      padding: 14px 10px;
+      padding: 16px 12px;
     }
     .container {
       width: 100%;
-      max-width: 380px;
+      max-width: 360px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
     }
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 4px;
+      padding: 4px 6px;
     }
-    .header h1 { font-size: 1.15rem; font-weight: 700; }
-    .status-badge {
+    .header h1 {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
       font-size: 0.75rem;
       background: rgba(16, 185, 129, 0.15);
       color: #34d399;
       padding: 4px 10px;
       border-radius: 20px;
-      font-weight: 600;
+      font-weight: 700;
       border: 1px solid rgba(16, 185, 129, 0.3);
     }
-    .card {
+    .remote-body {
       background: var(--card);
       border-radius: var(--radius-lg);
-      padding: 16px;
+      padding: 20px 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 18px;
       border: 1px solid rgba(255,255,255,0.06);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
     }
-    .card-title {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+    .row {
+      display: grid;
+      gap: 10px;
     }
-    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .row-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .row-2 { grid-template-columns: 1fr 1fr; }
     button {
       background: var(--btn-bg);
       color: var(--text);
       border: none;
       border-radius: var(--radius-md);
-      padding: 14px 8px;
-      font-size: 0.95rem;
+      padding: 16px 8px;
+      font-size: 1rem;
       font-weight: 700;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
       transition: all 0.08s ease;
       -webkit-tap-highlight-color: transparent;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      box-shadow: 0 3px 8px rgba(0,0,0,0.25);
     }
     button:active {
-      transform: scale(0.95);
-      background: var(--accent);
+      transform: scale(0.94);
+      background: var(--btn-active);
       color: #fff;
     }
-    .btn-power { background: #dc2626; color: #fff; }
-    .btn-power:active { background: #b91c1c; }
-    .btn-laser { background: #059669; color: #fff; }
-    .btn-lamp { background: #7c3aed; color: #fff; }
+    .btn-power {
+      background: var(--danger-dark);
+      color: #fff;
+      font-size: 1.25rem;
+    }
+    .btn-power:active { background: #991b1b; }
+    .btn-secondary {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    
+    /* D-PAD */
+    .dpad-card {
+      background: var(--card-inner);
+      border-radius: 50%;
+      width: 220px;
+      height: 220px;
+      margin: 4px auto;
+      position: relative;
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.6);
+    }
+    .dpad-btn {
+      position: absolute;
+      background: var(--btn-bg);
+      color: var(--text);
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .dpad-up    { top: 8px; left: 81px; }
+    .dpad-down  { bottom: 8px; left: 81px; }
+    .dpad-left  { top: 81px; left: 8px; }
+    .dpad-right { top: 81px; right: 8px; }
+    .dpad-center {
+      position: absolute;
+      top: 75px;
+      left: 75px;
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: 800;
+      box-shadow: 0 4px 14px rgba(99,102,241,0.4);
+    }
+    .dpad-center:active {
+      background: #4338ca;
+      transform: scale(0.92);
+    }
+
+    /* Keypad Drawer */
+    .keypad-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .btn-num {
+      padding: 12px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      background: rgba(31, 41, 61, 0.6);
+    }
+
+    /* Toast */
     .toast {
       position: fixed;
       bottom: 24px;
@@ -241,7 +275,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       padding: 8px 18px;
       border-radius: 20px;
       font-size: 0.82rem;
-      font-weight: 600;
+      font-weight: 700;
       border: 1px solid rgba(56, 189, 248, 0.3);
       opacity: 0;
       transition: all 0.2s ease;
@@ -257,49 +291,58 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <body>
   <div class="container">
     <div class="header">
-      <h1>📺 TV & Lampa</h1>
-      <span class="status-badge">● Wi-Fi Ansluten</span>
+      <h1>📺 Toshiba TV</h1>
+      <span class="badge">● Wi-Fi</span>
     </div>
 
-    <!-- Toshiba TV Remote -->
-    <div class="card">
-      <div class="card-title">Toshiba TV</div>
-      <div class="grid-3">
-        <button class="btn-power" onclick="sendCmd('POWER')">⏻ Power</button>
-        <button onclick="sendCmd('INPUT')">Källa</button>
-        <button onclick="sendCmd('MUTE')">🔇 Mute</button>
+    <div class="remote-body">
+      <!-- Power, Input, Mute -->
+      <div class="row row-3">
+        <button class="btn-power" onclick="sendCmd('POWER')" title="Power">⏻</button>
+        <button class="btn-secondary" onclick="sendCmd('INPUT')">KÄLLA</button>
+        <button class="btn-secondary" onclick="sendCmd('MUTE')">🔇 MUTE</button>
       </div>
-      <div class="grid-2">
-        <button onclick="sendCmd('VOL+')">🔊 Vol +</button>
-        <button onclick="sendCmd('CH+')">CH ▲</button>
-      </div>
-      <div class="grid-2">
-        <button onclick="sendCmd('VOL-')">🔉 Vol −</button>
-        <button onclick="sendCmd('CH-')">CH ▼</button>
-      </div>
-      <div class="grid-3">
-        <button onclick="sendCmd('BACK')">↩ Bakåt</button>
-        <button onclick="sendCmd('MENU')">☰ Meny</button>
-        <button onclick="sendCmd('OK')">OK</button>
-      </div>
-    </div>
 
-    <!-- Cleverio Smart Galaxy Lamp -->
-    <div class="card">
-      <div class="card-title" style="color: #c084fc;">🌌 Cleverio Galaxy Lampa</div>
-      <div class="grid-2">
-        <button class="btn-lamp" onclick="sendCmd('LAMP_ON')">💡 Lampa På</button>
-        <button onclick="sendCmd('LAMP_OFF')">Lampa Av</button>
+      <!-- Volume & Channel -->
+      <div class="row row-2">
+        <button onclick="sendCmd('VOL+')">🔊 VOL +</button>
+        <button onclick="sendCmd('CH+')">▲ CH +</button>
       </div>
-      <div class="grid-2">
-        <button class="btn-laser" onclick="sendCmd('LASER_ON')">✨ Laser På</button>
-        <button onclick="sendCmd('LASER_OFF')">Laser Av</button>
+      <div class="row row-2">
+        <button onclick="sendCmd('VOL-')">🔉 VOL −</button>
+        <button onclick="sendCmd('CH-')">▼ CH −</button>
       </div>
-      <div class="grid-4">
-        <button style="background:#dc2626;" onclick="sendCmd('LAMP_RED')">Röd</button>
-        <button style="background:#16a34a;" onclick="sendCmd('LAMP_GREEN')">Grön</button>
-        <button style="background:#2563eb;" onclick="sendCmd('LAMP_BLUE')">Blå</button>
-        <button style="background:#9333ea;" onclick="sendCmd('LAMP_PURPLE')">Lila</button>
+
+      <!-- D-Pad Navigation -->
+      <div class="dpad-card">
+        <button class="dpad-btn dpad-up" onclick="sendCmd('UP')">▲</button>
+        <button class="dpad-btn dpad-left" onclick="sendCmd('LEFT')">◀</button>
+        <button class="dpad-center" onclick="sendCmd('OK')">OK</button>
+        <button class="dpad-btn dpad-right" onclick="sendCmd('RIGHT')">▶</button>
+        <button class="dpad-btn dpad-down" onclick="sendCmd('DOWN')">▼</button>
+      </div>
+
+      <!-- Menu / Back / Exit -->
+      <div class="row row-3">
+        <button class="btn-secondary" onclick="sendCmd('BACK')">↩ Bakåt</button>
+        <button class="btn-secondary" onclick="sendCmd('MENU')">☰ Meny</button>
+        <button class="btn-secondary" onclick="sendCmd('EXIT')">✕ Exit</button>
+      </div>
+
+      <!-- Numeric Keypad -->
+      <div class="keypad-grid">
+        <button class="btn-num" onclick="sendCmd('1')">1</button>
+        <button class="btn-num" onclick="sendCmd('2')">2</button>
+        <button class="btn-num" onclick="sendCmd('3')">3</button>
+        <button class="btn-num" onclick="sendCmd('4')">4</button>
+        <button class="btn-num" onclick="sendCmd('5')">5</button>
+        <button class="btn-num" onclick="sendCmd('6')">6</button>
+        <button class="btn-num" onclick="sendCmd('7')">7</button>
+        <button class="btn-num" onclick="sendCmd('8')">8</button>
+        <button class="btn-num" onclick="sendCmd('9')">9</button>
+        <div></div>
+        <button class="btn-num" onclick="sendCmd('0')">0</button>
+        <div></div>
       </div>
     </div>
   </div>
@@ -329,16 +372,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n--- ESP32-C3 TV + Cleverio Wi-Fi Controller Starting ---");
+    Serial.println("\n--- ESP32-C3 Toshiba TV Wi-Fi Remote Starting ---");
 
-    // 1. Initialize IR Sender on GPIO 1 (Toshiba TV)
+    // 1. Initialize IR Sender on GPIO 1
     IrSender.begin(IR_SEND_PIN);
     Serial.printf("[IR] Sender initialized on GPIO %d\n", IR_SEND_PIN);
 
     // 2. Initialize Wi-Fi in Station Mode (No BLE!)
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
-    WiFi.setTxPower(WIFI_POWER_8_5dBm); // Essential for ESP32-C3 radio stability and 4-way handshake
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
 
     WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
         if (event == ARDUINO_EVENT_WIFI_STA_CONNECTED) {
@@ -353,32 +396,29 @@ void setup() {
     Serial.printf("[WiFi] Connecting to router '%s'...\n", WIFI_SSID);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-    // 3. Initialize Tuya UDP Listener for Cleverio Lamp
-    lamp.beginUdp();
-
-    // 4. Start Local Web Server and REST API
+    // 3. Web Server Handlers
     server.on("/", HTTP_GET, []() {
         server.send_P(200, "text/html", INDEX_HTML);
     });
 
-    // REST API Endpoint: /cmd?c=POWER, /cmd?c=LAMP_ON, etc. (Can be called by SmartThings/Siri)
+    // REST API Endpoint for Browser, SmartThings & Siri: /cmd?c=POWER
     server.on("/cmd", HTTP_GET, []() {
         if (server.hasArg("c")) {
             String c = server.arg("c");
-            executeCommand(c);
+            executeTvCommand(c);
             server.send(200, "text/plain", "OK: " + c);
         } else {
             server.send(400, "text/plain", "Missing c parameter");
         }
     });
 
-    // Device Status Endpoint: /status
+    // Status endpoint for SmartThings / Healthchecks
     server.on("/status", HTTP_GET, []() {
         String json = "{";
-        json += "\"wifi\":\"" + String(WiFi.status() == WL_CONNECTED ? "connected" : "disconnected") + "\",";
+        json += "\"status\":\"online\",";
+        json += "\"device\":\"Toshiba TV Remote\",";
         json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
-        json += "\"ssid\":\"" + WiFi.SSID() + "\",";
-        json += "\"lamp_ip\":\"" + (lamp.isDiscovered() ? lamp.getLampIp().toString() : "searching") + "\"";
+        json += "\"brand\":\"Toshiba\"";
         json += "}";
         server.send(200, "application/json", json);
     });
@@ -391,7 +431,7 @@ void loop() {
     // Handle incoming HTTP requests
     server.handleClient();
 
-    // Handle mDNS service
+    // Start mDNS service once connected
     static bool mdnsStarted = false;
     if (WiFi.status() == WL_CONNECTED && !mdnsStarted) {
         if (MDNS.begin("tvremote")) {
@@ -399,52 +439,35 @@ void loop() {
             mdnsStarted = true;
             Serial.println("[mDNS] Responder started! Access via: http://tvremote.local");
         }
-        // Start NTP time sync once connected
-        configTime(0, 0, "pool.ntp.org", "time.google.com");
     }
 
-    // Tuya background UDP discovery and non-blocking IP probing
-    lamp.update();
-
-    // Background Wi-Fi Reconnect (Every 15 seconds if disconnected)
-    static unsigned long lastWifiAttempt = millis();
+    // Auto-reconnect Wi-Fi every 10 seconds if dropped
+    static unsigned long lastCheck = millis();
     if (WiFi.status() != WL_CONNECTED) {
-        if (millis() - lastWifiAttempt > 15000) {
-            lastWifiAttempt = millis();
-            currentApIndex = (currentApIndex + 1) % numFallbackAPs;
-            const KnownAP &ap = fallbackAPs[currentApIndex];
-            Serial.printf("[WiFi] Reconnecting to AP: '%s'...\n", ap.ssid);
+        if (millis() - lastCheck > 10000) {
+            lastCheck = millis();
+            Serial.println("[WiFi] Reconnecting to router...");
             WiFi.disconnect(true, true);
             delay(100);
-            WiFi.begin(ap.ssid, ap.pass);
+            WiFi.begin(WIFI_SSID, WIFI_PASS);
         }
     } else {
-        lastWifiAttempt = millis();
+        lastCheck = millis();
     }
 
-    // Serial CLI commands for testing directly from PC
+    // Serial CLI commands for testing from PC
     static String serialCmd = "";
     while (Serial.available()) {
         char c = (char)Serial.read();
         if (c == '\n' || c == '\r') {
             if (serialCmd.length() > 0) {
                 Serial.printf("[CLI] Executing: %s\n", serialCmd.c_str());
-                executeCommand(serialCmd);
+                executeTvCommand(serialCmd);
                 serialCmd = "";
             }
         } else {
             serialCmd += c;
         }
-    }
-
-    // Status Heartbeat
-    static unsigned long lastLog = 0;
-    if (millis() - lastLog > 5000) {
-        lastLog = millis();
-        Serial.printf("[STATUS] WiFi: %s (%s) | Lamp IP: %s\n",
-            WiFi.status() == WL_CONNECTED ? WiFi.SSID().c_str() : "Disconnected",
-            WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "No IP",
-            lamp.isDiscovered() ? lamp.getLampIp().toString().c_str() : "Searching");
     }
 
     delay(5);

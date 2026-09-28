@@ -29,7 +29,17 @@ enum RemoteCommand {
     CMD_RIGHT,
     CMD_OK,
     CMD_BACK,
-    CMD_MENU
+    CMD_MENU,
+    CMD_0,
+    CMD_1,
+    CMD_2,
+    CMD_3,
+    CMD_4,
+    CMD_5,
+    CMD_6,
+    CMD_7,
+    CMD_8,
+    CMD_9
 };
 
 // Forward declaration
@@ -64,6 +74,16 @@ inline const char* getCommandName(RemoteCommand cmd) {
         case CMD_OK:       return "OK";
         case CMD_BACK:     return "BACK";
         case CMD_MENU:     return "MENU";
+        case CMD_0:        return "0";
+        case CMD_1:        return "1";
+        case CMD_2:        return "2";
+        case CMD_3:        return "3";
+        case CMD_4:        return "4";
+        case CMD_5:        return "5";
+        case CMD_6:        return "6";
+        case CMD_7:        return "7";
+        case CMD_8:        return "8";
+        case CMD_9:        return "9";
         default:           return "UNKNOWN";
     }
 }
@@ -91,6 +111,16 @@ inline void sendTVCommand(TVBrand brand, RemoteCommand cmd) {
                 case CMD_OK:       code = 0x21; break;
                 case CMD_BACK:     code = 0x64; break;
                 case CMD_MENU:     code = 0x5B; break;
+                case CMD_0:        code = 0x00; break;
+                case CMD_1:        code = 0x01; break;
+                case CMD_2:        code = 0x02; break;
+                case CMD_3:        code = 0x03; break;
+                case CMD_4:        code = 0x04; break;
+                case CMD_5:        code = 0x05; break;
+                case CMD_6:        code = 0x06; break;
+                case CMD_7:        code = 0x07; break;
+                case CMD_8:        code = 0x08; break;
+                case CMD_9:        code = 0x09; break;
                 default: return;
             }
             IrSender.sendNEC(addr, code, 1);
