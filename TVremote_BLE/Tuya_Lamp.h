@@ -123,7 +123,15 @@ public:
     }
 
     bool setLaser(bool on) {
-        return sendCommand("{\"26\":" + String(on ? "true" : "false") + "}");
+        return sendCommand("{\"102\":" + String(on ? "true" : "false") + "}");
+    }
+
+    bool setNebula(bool on) {
+        return sendCommand("{\"103\":" + String(on ? "true" : "false") + "}");
+    }
+
+    bool setSpeed(int speed) { // 0 - 1000
+        return sendCommand("{\"101\":" + String(speed) + "}");
     }
 
     bool setMode(const char* mode) { // "colour", "white", "scene", "music"

@@ -19,9 +19,9 @@
 const char* AP_SSID = "GalaxyNet";
 const char* AP_PASS = "superhemligt123";
 
-// Tuya Device Credentials (retrieve via tinytuya)
-const char* TUYA_DEV_ID    = "YOUR_DEV_ID";
-const char* TUYA_LOCAL_KEY = "YOUR_LOCAL_KEY";
+// Tuya Device Credentials (Cleverio Smart Galaxy Lamp)
+const char* TUYA_DEV_ID    = "bf8fb27deb7cd94966pntq";
+const char* TUYA_LOCAL_KEY = "<q:~=&dB[i.bo=^F";
 
 TuyaLampController lamp(TUYA_DEV_ID, TUYA_LOCAL_KEY, IPAddress(192, 168, 4, 2));
 
@@ -183,6 +183,13 @@ void setup() {
 
     // 2. Start Wi-Fi SoftAP for Cleverio Lamp
     WiFi.mode(WIFI_AP);
+    WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+        if (event == ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED) {
+            IPAddress ip = IPAddress(info.wifi_ap_staipassigned.ip.addr);
+            Serial.printf("[AP] Cleverio Lamp connected! Assigned IP: %s\n", ip.toString().c_str());
+            lamp.setLampIp(ip);
+        }
+    });
     WiFi.softAP(AP_SSID, AP_PASS);
     Serial.printf("[AP] SoftAP '%s' started at IP %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
 
