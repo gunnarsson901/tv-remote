@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <time.h>
 #include <mbedtls/aes.h>
 
 class TuyaLampController {
@@ -12,7 +13,11 @@ private:
     String localKey;
     IPAddress lampIp;
     bool ipDiscovered;
-    WiFiUDP udp;
+    WiFiUDP udp6666;
+    WiFiUDP udp6667;
+    unsigned long lastProbeTime;
+    int probeHostIndex;
+    uint32_t seqno;
 
     uint32_t calculateCRC32(const uint8_t *data, size_t length) {
         uint32_t crc = 0xFFFFFFFF;
@@ -26,12 +31,49 @@ private:
         return ~crc;
     }
 
+    uint32_t getUnixTimestamp() {
+        time_t now;
+        time(&now);
+        if (now > 1700000000) {
+            return (uint32_t)now;
+        }
+        // Fallback realistic 10-digit epoch timestamp if NTP not yet synced
+        return 1727525000 + (millis() / 1000);
+    }
+
+    void probeNextIp() {
+        if (WiFi.status() != WL_CONNECTED || ipDiscovered) return;
+        
+        unsigned long now = millis();
+        if (now - lastProbeTime < 800) return;
+        lastProbeTime = now;
+
+        IPAddress myIp = WiFi.localIP();
+        if (myIp == IPAddress(0, 0, 0, 0)) return;
+
+        if (probeHostIndex > 15) probeHostIndex = 2;
+
+        IPAddress testIp(myIp[0], myIp[1], myIp[2], probeHostIndex);
+        probeHostIndex++;
+
+        if (testIp == myIp) return;
+
+        WiFiClient testClient;
+        if (testClient.connect(testIp, 6668, 150)) {
+            testClient.stop();
+            lampIp = testIp;
+            ipDiscovered = true;
+            Serial.printf("[Tuya] Discovered Cleverio lamp at IP: %s (via port 6668 probe)\n", lampIp.toString().c_str());
+        }
+    }
+
 public:
     TuyaLampController(const char* id, const char* key, IPAddress defaultIp = IPAddress(0, 0, 0, 0))
-        : devId(id), localKey(key), lampIp(defaultIp), ipDiscovered(false) {}
+        : devId(id), localKey(key), lampIp(defaultIp), ipDiscovered(false), lastProbeTime(0), probeHostIndex(2), seqno(1) {}
 
     void beginUdp() {
-        udp.begin(6666);
+        udp6666.begin(6666);
+        udp6667.begin(6667);
     }
 
     void setLampIp(IPAddress ip) {
@@ -50,22 +92,43 @@ public:
     void update() {
         if (WiFi.status() != WL_CONNECTED) return;
         
-        int packetSize = udp.parsePacket();
-        if (packetSize > 0) {
+        // 1. Check UDP 6666
+        int packetSize66 = udp6666.parsePacket();
+        if (packetSize66 > 0) {
             char buf[512];
-            int len = udp.read(buf, sizeof(buf) - 1);
+            int len = udp6666.read(buf, sizeof(buf) - 1);
             if (len > 0) {
                 buf[len] = '\0';
                 String msg = String(buf);
                 if (msg.indexOf(devId) >= 0) {
-                    IPAddress newIp = udp.remoteIP();
+                    IPAddress newIp = udp6666.remoteIP();
                     if (!ipDiscovered || lampIp != newIp) {
                         lampIp = newIp;
                         ipDiscovered = true;
-                        Serial.printf("[Tuya] Discovered Cleverio lamp at IP: %s\n", lampIp.toString().c_str());
+                        Serial.printf("[Tuya] Discovered Cleverio lamp at IP: %s (via UDP 6666)\n", lampIp.toString().c_str());
                     }
                 }
             }
+        }
+
+        // 2. Check UDP 6667
+        int packetSize67 = udp6667.parsePacket();
+        if (packetSize67 > 0) {
+            char buf[512];
+            int len = udp6667.read(buf, sizeof(buf) - 1);
+            if (len > 0) {
+                IPAddress newIp = udp6667.remoteIP();
+                if (!ipDiscovered || lampIp != newIp) {
+                    lampIp = newIp;
+                    ipDiscovered = true;
+                    Serial.printf("[Tuya] Discovered Cleverio lamp at IP: %s (via UDP 6667)\n", lampIp.toString().c_str());
+                }
+            }
+        }
+
+        // 3. Background IP probe
+        if (!ipDiscovered) {
+            probeNextIp();
         }
     }
 
@@ -80,45 +143,23 @@ public:
             return false;
         }
 
-        // If IP is not discovered yet, check UDP packet or probe subnet
         if (!ipDiscovered || lampIp == IPAddress(0, 0, 0, 0)) {
-            update();
-            if (!ipDiscovered || lampIp == IPAddress(0, 0, 0, 0)) {
-                Serial.println("[Tuya] Lamp IP unknown. Probing local subnet for port 6668...");
-                IPAddress myIp = WiFi.localIP();
-                for (int i = 2; i <= 20; i++) {
-                    IPAddress testIp(myIp[0], myIp[1], myIp[2], i);
-                    if (testIp == myIp) continue;
-                    WiFiClient testClient;
-                    testClient.setTimeout(50);
-                    if (testClient.connect(testIp, 6668)) {
-                        testClient.stop();
-                        lampIp = testIp;
-                        ipDiscovered = true;
-                        Serial.printf("[Tuya] Found open Tuya port 6668 at %s!\n", lampIp.toString().c_str());
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!ipDiscovered || lampIp == IPAddress(0, 0, 0, 0)) {
-            Serial.println("[Tuya] Cannot send: Lamp IP unknown on current network!");
+            Serial.println("[Tuya] Cannot send: Lamp IP unknown on current network! Probing in progress...");
             return false;
         }
 
-        Serial.printf("[Tuya] Sending to %s: %s\n", lampIp.toString().c_str(), dpsJson.c_str());
+        Serial.printf("[Tuya] Connecting to %s:6668 to send %s...\n", lampIp.toString().c_str(), dpsJson.c_str());
 
         WiFiClient client;
-        client.setTimeout(1000);
-        if (!client.connect(lampIp, 6668)) {
+        if (!client.connect(lampIp, 6668, 1000)) {
             Serial.printf("[Tuya] Connection to lamp at %s failed!\n", lampIp.toString().c_str());
-            ipDiscovered = false; // Reset to rediscover IP
+            ipDiscovered = false;
             return false;
         }
 
-        // Build full Tuya 3.3 payload JSON
-        String fullJson = "{\"devId\":\"" + devId + "\",\"uid\":\"" + devId + "\",\"t\":" + String(millis()) + ",\"dps\":" + dpsJson + "}";
+        // Build full Tuya 3.3 payload JSON with string epoch timestamp exactly like tinytuya
+        uint32_t t_stamp = getUnixTimestamp();
+        String fullJson = "{\"devId\":\"" + devId + "\",\"uid\":\"" + devId + "\",\"t\":\"" + String(t_stamp) + "\",\"dps\":" + dpsJson + "}";
 
         // AES-128-ECB PKCS7 Padding
         int plainLen = fullJson.length();
@@ -147,10 +188,15 @@ public:
         // Frame length = payloadLen + 8 (CRC 4B + Suffix 4B)
         uint32_t frameLen = payloadLen + 8;
 
-        // Header: prefix (0x000055AA), seq (0), cmd (0x07), length
+        seqno++;
+
+        // Header: prefix (0x000055AA), seq (seqno), cmd (0x07), length
         uint8_t header[16];
         header[0] = 0x00; header[1] = 0x00; header[2] = 0x55; header[3] = 0xAA;
-        header[4] = 0x00; header[5] = 0x00; header[6] = 0x00; header[7] = 0x00;
+        header[4] = (seqno >> 24) & 0xFF;
+        header[5] = (seqno >> 16) & 0xFF;
+        header[6] = (seqno >> 8) & 0xFF;
+        header[7] = seqno & 0xFF;
         header[8] = 0x00; header[9] = 0x00; header[10] = 0x00; header[11] = 0x07;
         header[12] = (frameLen >> 24) & 0xFF;
         header[13] = (frameLen >> 16) & 0xFF;
@@ -176,16 +222,39 @@ public:
         packet[totalPreCrc + 7] = 0x55;
 
         client.write(packet, sizeof(packet));
-        delay(50);
-        client.stop();
+        client.flush();
 
-        Serial.println("[Tuya] Command successfully sent over LAN!");
+        // Wait for and read the lamp's ACK response so connection is cleanly completed
+        unsigned long waitStart = millis();
+        bool gotResponse = false;
+        while (client.connected() && millis() - waitStart < 800) {
+            if (client.available()) {
+                uint8_t respBuf[128];
+                int r = client.read(respBuf, sizeof(respBuf));
+                Serial.printf("[Tuya] Lamp acknowledged! Received %d bytes (prefix 0x%02X%02X)\n", r, respBuf[2], respBuf[3]);
+                gotResponse = true;
+                break;
+            }
+            delay(10);
+        }
+
+        if (!gotResponse) {
+            Serial.println("[Tuya] Notice: No response packet before timeout (command was sent)");
+        }
+
+        client.stop();
         return true;
     }
 
     // Helper functions for Cleverio Galaxy Lamp DPs
     bool setPower(bool on) {
-        return sendCommand("{\"20\":" + String(on ? "true" : "false") + "}");
+        if (!on) {
+            // Turn off main LED (20), laser (102), and nebula (103)
+            return sendCommand("{\"20\":false,\"102\":false,\"103\":false}");
+        } else {
+            // Turn on main LED (20), laser (102), and nebula (103)
+            return sendCommand("{\"20\":true,\"102\":true,\"103\":true}");
+        }
     }
 
     bool setLaser(bool on) {
@@ -207,7 +276,7 @@ public:
     bool setColorHSV(uint16_t h, uint16_t s, uint16_t v) { // h: 0-360, s: 0-1000, v: 0-1000
         char buf[16];
         snprintf(buf, sizeof(buf), "%04x%04x%04x", h, s, v);
-        return sendCommand("{\"21\":\"colour\",\"24\":\"" + String(buf) + "\"}");
+        return sendCommand("{\"20\":true,\"21\":\"colour\",\"24\":\"" + String(buf) + "\"}");
     }
 };
 
